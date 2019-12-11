@@ -6,7 +6,7 @@ import time
 
 
 app = flask.Flask(__name__)
-app.secret_key = 'cdfsfdsasa'
+app.secret_key = 'cdfsfdsas'
 
 messages = 0
 newmessages = 0
