@@ -1,143 +1,87 @@
-# from flask import Flask, request, render_template, Response #import main Flask class and request object
 
-# app = Flask(__name__) #create the Flask app
-
-# def event_stream():
-#     pubsub = red.pubsub()
-#     pubsub.subscribe('chat')
-#     for message in pubsub.listen():
-#         print(message)
-#         yield 'data: %s\n\n' % message['data']
-
-# @app.route('/')
-# def index():
-#     return render_template('index.html')
-
-# @app.route('/query-example')
-# def query_example():
-#     return 'Todo...'
-
-# @app.route('/form-example')
-# def formexample():
-#     return 'Todo...'
-
-# @app.route('/json-example')
-# def jsonexample():
-#     return 'Todo...'
-
-# @app.route('/stream')
-# def stream():
-#     return Response(event_stream(),mimetype="text/event-stream")
-
-
-# # server sude stuff that might work
-##BEGIN------------------------------------------------------------------------
-# def get_message():
-#     '''this could be any function that blocks until data is ready'''
-#     time.sleep(1.0)
-#     s = time.ctime(time.time())
-#     return s
-
-# @app.route('/')
-# def root():
-#     return render_template('index.html')
-
-# @app.route('/stream')
-# def stream():
-#     def eventStream():
-#         while True:
-#             # wait for source data to be available, then push it
-#             yield 'data: {}\n\n'.format(get_message())
-#     return Response(eventStream(), mimetype="text/event-stream")
-##END----------------------------------------------------------------------------
-# # js
-# # begin 
-# var targetContainer = document.getElementById("target_div");
-# var eventSource = new EventSource("/stream")
-#   eventSource.onmessage = function(e) {
-#   targetContainer.innerHTML = e.data;
-# };
-# # end
-
-# if __name__ == '__main__':
-#     app.run(debug=True, threaded = True, port=5000) #run app in debug mode on port 5000
-
-
-#chat app (may impliment in real chess)
-  
-#!/usr/bin/env python
 import datetime
 import flask
-import redis
+
+import time
 
 
 app = flask.Flask(__name__)
-app.secret_key = 'asdf'
-red = redis.StrictRedis()
+app.secret_key = 'cdfsfds'
+
+messages = 0
+newmessages = 0
+messagelist = []
+sep = "<<|>>"
 
 
-def event_stream():
-    pubsub = red.pubsub()
-    pubsub.subscribe('chat')
-    # TODO: handle client disconnection.
-    for message in pubsub.listen():
-        print(message)
-        yield 'data: %s\n\n' % message['data']
+def syncMessageList():
+    messages = open("all.log", "r")
+    messageList = []
+    for i in messages.read():
+        messageList.append(i)
 
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if flask.request.method == 'POST':
-        flask.session['user'] = flask.request.form['user']
-        return flask.redirect('/')
-    return '<form action="" method="post">user: <input name="user">'
 
 
-@app.route('/post', methods=['POST'])
-def post():
-    message = flask.request.form['message']
-    user = flask.session.get('user', 'anonymous')
-    now = datetime.datetime.now().replace(microsecond=0).time()
-    red.publish('chat', u'[%s] %s: %s' % (now.isoformat(), user, message))
-    return flask.Response(status=204)
+# @app.route('/stream')
+# def stream():
+#     def event_stream():
+#         global newmessages, messagelist, messages
+#         while True:
+#             if newmessages>0:
+#                 latestmessage = messagelist[messages]
+#                 messages+=1
+#                 newmessages-=1
+#                 app.logger.info(str(latestmessage, messagelist, newmessages))
+#                 return latestmessage
+    
+#     return flask.Response(str(event_stream()), mimetype="text/event-stream")
 
 
 @app.route('/stream')
 def stream():
-    return flask.Response(event_stream(),
-                          mimetype="text/event-stream")
+    def eventStream():
+        global newmessages, messagelist, messages
+        while newmessages>0:
+            latestmessage = messagelist[messages]
+            messages+=1
+            newmessages-=1
+            app.logger.info(str([latestmessage, messagelist, newmessages]))
+            yield 'data: {}\n\n'.format(latestmessage)
+    return flask.Response(eventStream(), mimetype="text/event-stream")
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    global usersarr
+    if flask.request.method == 'POST':
+        flask.session['user'] = flask.request.form['user']
+        return flask.redirect('/')
+    return flask.render_template('login.html')
+
+
+@app.route('/post', methods=['POST'])
+def post():
+    global newmessages, messagelist, messages, sep
+    message = flask.request.form['message']
+    # sender = flask.request.form['user']
+    messagetype = "chess"
+    receiver = "ALL"
+    user = flask.session.get('user', 'anonymous')
+    alllog = open("all.log", "a")
+    alllog.write(user + sep +  receiver + sep + messagetype + sep+ message)
+    messagelist.append(user + sep +  receiver + sep + messagetype + sep+ message)
+    newmessages+=1
+    app.logger.info(str(messagelist[-1]))
+    app.logger.info(str(newmessages))
+    return flask.Response(status=204)
 
 
 @app.route('/')
 def home():
     if 'user' not in flask.session:
         return flask.redirect('/login')
-    return """
-        <!doctype html>
-        <title>chat</title>
-        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
-        <style>body { max-width: 500px; margin: auto; padding: 1em; background: black; color: #fff; font: 16px/1.6 menlo, monospace; }</style>
-        <p><b>hi, %s!</b></p>
-        <p>Message: <input id="in" /></p>
-        <pre id="out"></pre>
-        <script>
-            function sse() {
-                var source = new EventSource('/stream');
-                var out = document.getElementById('out');
-                source.onmessage = function(e) {
-                    // XSS in chat is fun
-                    out.innerHTML =  e.data + '\\n' + out.innerHTML;
-                };
-            }
-            $('#in').keyup(function(e){
-                if (e.keyCode == 13) {
-                    $.post('/post', {'message': $(this).val()});
-                    $(this).val('');
-                }
-            });
-            sse();
-        </script>
-    """ % flask.session['user']
+    return flask.render_template("chat.html")% flask.session['user']
 
 
 if __name__ == '__main__':
