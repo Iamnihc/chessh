@@ -1,0 +1,6 @@
+#main{
+    flex-direction: column-reverse;
+}
+.row{
+    flex-direction: row;
+}
